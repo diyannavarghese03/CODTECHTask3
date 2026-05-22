@@ -1,0 +1,51 @@
+## Vulnerability Report: Login Bypass
+
+* Vulnerability Type: SQL Injection (SQLi) via Authentication Form
+* Severity: Critical
+* Affected Endpoint: /api/v1/auth/login
+* Vulnerable Parameters: username / password
+
+## Proof of Concept (PoC)
+
+* Vulnerable Backend Logic:
+
+SELECT * FROM users WHERE username = '$username' AND password = '$password'
+
+* Payload Tested: admin' OR '1'='1 (entered into the username field)
+* Resulting Query executed by DB:
+
+SELECT * FROM users WHERE username = 'admin' OR '1'='1' AND password = ''
+
+* Behavior: Because '1'='1' is always true, the database bypasses the password check completely. It returns the first record found (usually the administrator account), logging the attacker into the system without a valid password.
+
+------------------------------
+## Targeted Mitigation Strategies for Login Forms## 
+1. Parameterized Queries (The Ultimate Fix)
+Never concatenate login form inputs into your database query strings. Use placeholders so the database processor handles the input strictly as literal strings, not executable command logic.
+
+## 2. Fixing the SQL Injection (Backend)
+Use placeholders (%s) and pass variables as a separate tuplequery = "SELECT id, password_hash FROM users WHERE username = %s"
+cursor.execute(query, (username,))user = cursor.fetchone()
+Use question marks (?) as placeholdersquery = "SELECT id, password_hash FROM users WHERE username = ?"
+cursor.execute(query, (username,))
+
+## If you use an ORM like SQLAlchemy or Django:
+ORMs automatically parameterize queries for you by default.
+
+#  SAFE (Django ORM):user = User.objects.filter(username=username).first()
+#  SAFE (SQLAlchemy):user = session.query(User).filter_by(username=username).first()
+
+* Example in Node.js (pg / PostgreSQL):
+
+//  Inputs are separated from the query structureconst query = 'SELECT id, password_hash FROM users WHERE username = $1';const result = await db.query(query, [usernameInput]);
+
+
+## 3. Implement Proper Password Hashing Architecture
+Do not look up the plain-text password in the SQL query itself. Instead, fetch the user record by username alone using a parameterized query, then verify the password safely in your backend code using a hashing library like bcrypt or Argon2.
+
+* Example Logic:
+1. Query database: SELECT password_hash FROM users WHERE username = $1
+   2. If user exists, compare: bcrypt.compare(passwordInput, password_hash)
+
+## 3. Account Lockout & Rate Limiting
+Attackers often automate SQL injection testing on login portals. Implement rate limiting (e.g., maximum 5 attempts per IP per minute) to slow down automated vulnerability scanners and brute-force tools.
